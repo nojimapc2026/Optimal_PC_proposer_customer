@@ -273,15 +273,15 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
       {key:'years',title:'パソコンを使い続けたい年数を選択してください',help:'長く使う予定の場合は、将来も余裕を持って使える性能を目安にします。',options:[['3年未満','3','短期間での買い替えを想定'],['3〜5年','5','標準的な利用期間'],['6〜12年','12','長期利用を想定']]},
       {key:'multitask',title:'マルチタスクをする頻度を選択してください',help:'複数のアプリやブラウザーのタブを同時に使う頻度です。',options:[['ほとんどしない','1','使うアプリは少なめ'],['たまにする','2','複数アプリをときどき併用'],['頻繁にする','3','多くのアプリをいつも同時に使う']]},
       {key:'storage',title:'資料や画像などをパソコンに保存したいですか？',help:'本体に保存するファイルの量をイメージしてください。',options:[['ほとんどしない','1','クラウド中心・保存は少なめ'],['たまにする','2','書類や写真をある程度保存'],['頻繁にする','3','写真・動画などを多く保存']]},
-      {key:'unplugged',title:'電源に接続せずに使用する頻度を選択してください',help:'バッテリー性能そのものはベクトルに含まれないため、軽さの目安にだけ補助的に反映します。',options:[['ほとんどしない','1','電源のある場所で使う'],['たまにする','2','外出先でもときどき使う'],['頻繁にする','3','電源のない場所でもよく使う']]},
+      {key:'unplugged',title:'電源に接続せずに使用する頻度を選択してください',help:'電源なしで使う頻度は重量の目安に加え、NPUコア数の希望目安にも反映します。実際のバッテリー駆動時間は製品ごとにご確認ください。',options:[['ほとんどしない','1','電源のある場所で使う'],['たまにする','2','外出先でもときどき使う'],['頻繁にする','3','電源のない場所でもよく使う']]},
       {key:'design',title:'デザイン性は重視されますか？',help:'見た目や素材感に対する重視度です。',options:[['ほとんど重視しない','1','機能を優先'],['少し重視する','2','使いやすさとのバランス'],['かなり重視する','3','デザインも大切な選定条件']]},
-      {key:'quiet',title:'静かな環境で作業しますか？',help:'静かな場所で作業する頻度を選んでください。',options:[['ほとんどしない','1','周囲の音はあまり気にならない'],['たまにする','2','静かな場所で作業することがある'],['頻繁にする','3','静かな場所で作業することが多い']]},
+      {key:'quiet',title:'静かな環境で作業しますか？',help:'静かな場所の利用頻度をNPUコア数の希望目安に反映します。実際のファン音や静音性は製品の冷却設計・負荷にも左右されます。',options:[['ほとんどしない','1','周囲の音はあまり気にならない'],['たまにする','2','静かな場所で作業することがある'],['頻繁にする','3','静かな場所で作業することが多い']]},
       {key:'readability',title:'画面の見やすさにこだわりはありますか？',help:'明るさや文字の見やすさを、どの程度重視するか選んでください。',options:[['特にない','1','標準的な画面でよい'],['見やすい方が良い','2','画面の見やすさを重視']]},
       {key:'makers',title:'メーカーにこだわりはありますか？',multi:true,optional:true,help:'希望するメーカーをすべて選んでください。指定がなければ何も選ばず進めます。',dense:true,options:manufacturers.map((name,i)=>[name,String(i+1),i===14?'製品カテゴリ':''])},
       {key:'reliability',title:'どちらかを選択してください',help:'ご希望に近い方を選んでください。',options:[['値段は高いが故障事例が少ない','✓','故障しにくさを優先する'],['値段は安いが故障事例が多い','￥','価格を抑えることを優先する']]},
       {key:'warranty',title:'保証を重視されますか？',help:'保証内容はPCスペックの数値ベクトルには含まれません。結果画面に補足表示します。',options:[['メーカー保証で十分','▣','メーカー標準の保証を希望'],['物損保証を追加したい','＋','落下や水濡れなども気になる'],['何でも守れる保証が良い','✧','幅広い補償を希望'],['今はまだ決めていない','…','スタッフと相談して決める']]}
     ].map(q=>({...q,options:q.options.map((o,i)=>({label:o[0],icon:o[1],desc:o[2]||'',value:q.key==='years'?o[0]:q.key==='makers'?String(i):q.key==='multitask'||q.key==='storage'||q.key==='unplugged'||q.key==='design'||q.key==='quiet'||q.key==='readability'?o[0]:o[0]}))}));
-    const QR_SCHEMA_VERSION=2;
+    const QR_SCHEMA_VERSION=3;
     const QR_ANSWER_CODES={
       purpose:[1,2,4],carry:[1,2,3],weightPref:[1,2,3],screen:[1,2],
       tasks:[1,2,4,8,16,32,64,128,256,512,1024,2048],years:[1,2,3],
@@ -309,7 +309,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
     }
     const vectorKeys=['cpuSingle','cpuMulti','npuCores','gpu','ramGB','ssdGB','weightG','design','displayInch','aspectRatio','manufacturerMask','failureFrequency','readability','positioning'];
     const specMeta=[
-      ['CPU single','Cinebench 2026 single-core score'],['CPU multi','Cinebench 2026 multi-core score'],['NPUコア数','0ならNPU非搭載扱い'],['GPU','3DMark Steel Nomad score'],['メモリ','GB'],['ストレージ','GB'],['重量','g'],['デザイン','1〜10点の目安'],['画面サイズ','inch'],['画面比率','16:9 または 16:10'],['メーカー指定','bit mask（0は指定なし）'],['故障頻度','0 少ない / 1 多い'],['見やすさ','1〜10点の目安'],['位置付け','1 エントリー / 10 ハイエンド']
+      ['CPU single','Cinebench 2026 single-core score'],['CPU multi','Cinebench 2026 multi-core score'],['NPUコア数','顧客側：0は特別な希望なし、正数は希望最低コア数'],['GPU','3DMark Steel Nomad score'],['メモリ','GB'],['ストレージ','GB'],['重量','g'],['デザイン','1〜10点の目安'],['画面サイズ','inch'],['画面比率','16:9 または 16:10'],['メーカー指定','bit mask（0は指定なし）'],['故障頻度','0 少ない / 1 多い'],['見やすさ','1〜10点の目安'],['位置付け','1 エントリー / 10 ハイエンド']
     ];
     const bounds=[[0,3000],[0,40000],[0,80],[0,25000],[4,128],[128,8192],[700,3000],[1,10],[13.3,16],null,null,null,[1,10],[1,10]];
     const weights=[1,1,.8,.6,1,.9,.7,.5,1,.7,.65,.55,.65,.5];
@@ -329,7 +329,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
       const cpuSingle=Math.round(500+1800*dCpu);
       const cpuMulti=Math.round(1500+24000*dCpu);
       const gpu=taskGpu===0?0:Math.round(2500+18000*taskGpu);
-      const npuCores=a.years==='6〜12年'&&(a.tasks||[]).some(x=>['画像・動画の編集','オンライン会議・通話','プログラミング'].includes(x))?16:0;
+      const npuBase=a.years==='6〜12年'&&(a.tasks||[]).some(x=>['画像・動画の編集','オンライン会議・通話','プログラミング'].includes(x))?16:0;
+      const npuFrequencyAdd=value=>value==='頻繁にする'?32:value==='たまにする'?16:0;
+      const npuCores=Math.min(80,npuBase+npuFrequencyAdd(a.unplugged)+npuFrequencyAdd(a.quiet));
       const purposeRam=Math.max(...(a.purpose||[]).map(x=>x==='勉強'?8:16),8);
       const q7Ram=a.multitask==='頻繁にする'?32:a.multitask==='たまにする'?16:8;
       const taskRam=Math.max(8,...tasks.map(x=>x.ram));
@@ -412,12 +414,30 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
       return rows.slice(1).map((row,index)=>{const line=index+2;if(row.length!==(rich?17:16))throw new Error(`${line}行目は${rich?17:16}列が必要です。`);const model=String(row[0]).trim(),jan=String(row[1]).trim();if(!model)throw new Error(`${line}行目：型番が空です。`);if(!validJan(jan))throw new Error(`${line}行目：JANコードの桁数またはチェックデジットが不正です。`);const vector=validateCatalogVector(row.slice(2,16),line),highlights=rich?String(row[16]??'').trim():'';if(highlights.length>500)throw new Error(`${line}行目：highlightsは500文字以内です。`);return {model,jan,vector,highlights}});
     }
     function normalizeMatchValue(index,value){const range=bounds[index];return clamp((Number(value)-range[0])/(range[1]-range[0]),0,1)}
-    function matchScore(customer,product){let total=0,weightTotal=0;for(let i=0;i<14;i++){let similarity;if(i===9)similarity=Math.abs(Number(customer[i])-Number(product[i]))<.00001?1:0;else if(i===10)similarity=Number(customer[i])===0||((Number(customer[i])&Number(product[i]))!==0)?1:0;else if(i===11)similarity=Number(customer[i])===Number(product[i])?1:0;else similarity=1-Math.abs(normalizeMatchValue(i,customer[i])-normalizeMatchValue(i,product[i]));total+=weights[i]*similarity;weightTotal+=weights[i]}return total/weightTotal*100}
+    function matchScore(customer,product){let total=0,weightTotal=0;for(let i=0;i<14;i++){let similarity;if(i===2){const required=normalizeMatchValue(2,customer[i]),available=normalizeMatchValue(2,product[i]);similarity=required===0?1:1-Math.max(0,required-available)}else if(i===9)similarity=Math.abs(Number(customer[i])-Number(product[i]))<.00001?1:0;else if(i===10)similarity=Number(customer[i])===0||((Number(customer[i])&Number(product[i]))!==0)?1:0;else if(i===11)similarity=Number(customer[i])===Number(product[i])?1:0;else similarity=1-Math.abs(normalizeMatchValue(i,customer[i])-normalizeMatchValue(i,product[i]));total+=weights[i]*similarity;weightTotal+=weights[i]}return total/weightTotal*100}
     function rankProducts(customer,products,count){return products.map((product,index)=>({...product,match:matchScore(customer,product.vector),_index:index})).sort((a,b)=>Math.abs(b.match-a.match)>1e-12?b.match-a.match:a.model.localeCompare(b.model,'ja')||a.jan.localeCompare(b.jan,'en')||a._index-b._index).slice(0,count)}
     let customerCatalogPromise=null;
-    async function loadLatestCustomerCatalog(){if(!customerCatalogPromise)customerCatalogPromise=(async()=>{const manifestResponse=await fetch('/pc_data/latest.json',{cache:'no-store'});if(!manifestResponse.ok)throw new Error('共有PCカタログmanifestを取得できません。');const manifest=await manifestResponse.json();if(!/^pc_data_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.csv$/.test(manifest.filename||''))throw new Error('最新CSV名が指定形式ではありません。');const response=await fetch(`/pc_data/${encodeURIComponent(manifest.filename)}`,{cache:'no-store'});if(!response.ok)throw new Error('最新PCカタログCSVを取得できません。');return parseCatalogProducts(await response.text())})();return customerCatalogPromise}
+    function customerAppBasePath(){const path=window.location.pathname||'/';if(path.endsWith('/'))return path;const last=path.slice(path.lastIndexOf('/')+1);return /\.[a-z0-9]+$/i.test(last)?path.slice(0,path.lastIndexOf('/')+1):`${path}/`}
+    async function loadLatestCustomerCatalog(){
+      if(!customerCatalogPromise){
+        const base=`${customerAppBasePath()}pc_data/`;
+        customerCatalogPromise=(async()=>{
+          if(window.location.protocol==='file:')throw new Error('CSV共有の読込にはHTTPまたはHTTPSでの表示が必要です。Webサーバーからページを開いてください。');
+          const manifestUrl=`${base}latest.json`;
+          const manifestResponse=await fetch(manifestUrl,{cache:'no-store'});
+          if(!manifestResponse.ok)throw new Error(`共有PCカタログを取得できません（${manifestUrl} · HTTP ${manifestResponse.status}）。index.htmlと同じ公開フォルダのpc_data/を確認してください。`);
+          const manifest=await manifestResponse.json();
+          if(!/^pc_data_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.csv$/.test(manifest.filename||''))throw new Error('最新CSV名が指定形式ではありません。');
+          const csvUrl=`${base}${encodeURIComponent(manifest.filename)}`;
+          const response=await fetch(csvUrl,{cache:'no-store'});
+          if(!response.ok)throw new Error(`最新PCカタログCSVを取得できません（${csvUrl} · HTTP ${response.status}）。`);
+          return parseCatalogProducts(await response.text());
+        })().catch(error=>{customerCatalogPromise=null;throw error});
+      }
+      return customerCatalogPromise;
+    }
     function customerRecommendationCard(product,index){const specs=[[0,'CPU single'],[4,'RAM'],[5,'SSD'],[6,'重量'],[8,'画面'],[10,'メーカー']].map(([i,label])=>`<span><small>${esc(label)}</small><strong>${esc(formatSpec(i,product.vector[i]))}</strong></span>`).join('');return `<article class="customer-rec-card"><div class="customer-rec-top"><span class="customer-rec-rank">${index+1}位</span><strong>一致度 ${product.match.toFixed(1)}%</strong></div><h3>${esc(product.model)}</h3>${product.highlights?`<p class="customer-rec-highlight">${esc(product.highlights)}</p>`:'<p class="customer-rec-highlight muted">商品の魅力紹介はカタログ未登録です。</p>'}<div class="customer-rec-specs">${specs}</div><div class="customer-rec-barcode">${barcodeSvg(product.jan)}</div></article>`}
-    async function populateCustomerRecommendations(){const mount=document.getElementById('customer-recommendations');if(!mount||!state.vector)return;mount.innerHTML='<p class="recommendation-status">最新カタログを確認しています…</p>';try{const products=await loadLatestCustomerCatalog();if(!mount.isConnected)return;const ranked=rankProducts(state.vector,products,3);mount.innerHTML=ranked.length?`<div class="customer-rec-grid">${ranked.map(customerRecommendationCard).join('')}</div>`:'<p class="recommendation-status">共有カタログに商品データがまだありません。実商品CSVを pc_data/ に追加するとおすすめが表示されます。</p>'}catch(error){if(mount.isConnected)mount.innerHTML=`<p class="recommendation-status error">商品カタログを読み込めませんでした。${esc(error.message)}</p>`}}
+    async function populateCustomerRecommendations(){const mount=document.getElementById('customer-recommendations');if(!mount||!state.vector)return;mount.innerHTML='<p class="recommendation-status">最新カタログを確認しています…</p>';try{const products=await loadLatestCustomerCatalog();if(!mount.isConnected)return;const ranked=rankProducts(state.vector,products,3);mount.innerHTML=ranked.length?`<div class="customer-rec-grid">${ranked.map(customerRecommendationCard).join('')}</div>`:'<p class="recommendation-status">共有カタログに商品データがまだありません。実商品CSVを pc_data/ に追加するとおすすめが表示されます。</p>'}catch(error){if(mount.isConnected)mount.innerHTML=`<div class="recommendation-error" role="alert"><p class="recommendation-status error">商品カタログを読み込めませんでした。${esc(error.message)}</p><button type="button" class="secondary-btn" data-action="retry-catalog">もう一度読み込む</button></div>`}}
     function makerNames(mask){if(!mask)return ['メーカー指定なし'];return manufacturerBitNames.filter(x=>(mask&x.bit)!==0).map(x=>x.name)}
     function formatSpec(i,v){switch(i){case 0:return `約${v.toLocaleString('ja-JP')} 点`;case 1:return `約${v.toLocaleString('ja-JP')} 点`;case 2:return v===0?'0コア（NPU指定なし）':`${v}コア目安`;case 3:return v===0?'0点（高負荷GPUは指定なし）':`約${v.toLocaleString('ja-JP')} 点`;case 4:return `${v} GB`;case 5:return `${v.toLocaleString('ja-JP')} GB`;case 6:return `${v.toLocaleString('ja-JP')} g 以内を目安`;case 7:return `${v} / 10`;case 8:return `${v} inch`;case 9:return Math.abs(v-16/9)<.03?'16:9':'16:10';case 10:return makerNames(v).join('、');case 11:return v===0?'少ない（希望）':'多い（価格優先の希望）';case 12:return `${v} / 10`;case 13:return v>=8?'ハイエンド寄り':v<=4?'エントリー寄り':'中位〜上位寄り';default:return String(v)}}
     function renderSpecRows(vector){return vector.map((v,i)=>`<div class="spec-row"><span class="spec-label">${esc(specMeta[i][0])}</span><span class="spec-value">${esc(formatSpec(i,v))}</span></div>`).join('')}
@@ -428,7 +448,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
     function begin(){resetAnswers();state.index=0;state.view='quiz';render();window.scrollTo({top:0,behavior:'smooth'})}
     function answerChoice(btn){const q=questions[state.index];if(!q)return;const key=btn.dataset.question;if(key!==q.key)return;const value=btn.dataset.value;let old=state.answers[key];if(q.multi){if(!Array.isArray(old))old=[];state.answers[key]=old.includes(value)?old.filter(x=>x!==value):[...old,value]}else state.answers[key]=value;state.error='';const next=state.answers[key];app.querySelectorAll(`.option-card[data-question="${key}"]`).forEach(el=>{const selected=Array.isArray(next)?next.includes(el.dataset.value):next===el.dataset.value;el.classList.toggle('selected',selected);el.setAttribute('aria-pressed',String(selected))});const note=app.querySelector('.selection-note');if(note&&q.multi)note.textContent=`${Array.isArray(next)?next.length:0} 件選択中${q.optional?' · 指定なしでも進めます':''}`;const error=app.querySelector('.error-note');if(error)error.textContent=''}
     function advance(){const q=questions[state.index],ans=state.answers[q.key],ok=q.optional||(Array.isArray(ans)?ans.length>0:Boolean(ans));if(!ok){state.error=q.multi?'ひとつ以上選んでください。':'選択肢をひとつ選んでください。';render();return}state.error='';if(state.index<questions.length-1){state.index++;render();window.scrollTo({top:0,behavior:'smooth'});return}state.vector=makeVector();state.csv=toCsv(state.vector);state.view='result';render();window.scrollTo({top:0,behavior:'smooth'})}
-    document.addEventListener('click',event=>{const btn=event.target.closest('[data-action]');if(!btn)return;const action=btn.dataset.action;if(action==='start')begin();if(action==='choose')answerChoice(btn);if(action==='next')advance();if(action==='back'&&state.index>0){state.index--;state.error='';render();window.scrollTo({top:0,behavior:'smooth'})}if(action==='restart')begin()});
+    document.addEventListener('click',event=>{const btn=event.target.closest('[data-action]');if(!btn)return;const action=btn.dataset.action;if(action==='start')begin();if(action==='choose')answerChoice(btn);if(action==='next')advance();if(action==='back'&&state.index>0){state.index--;state.error='';render();window.scrollTo({top:0,behavior:'smooth'})}if(action==='restart')begin();if(action==='retry-catalog'){customerCatalogPromise=null;populateCustomerRecommendations()}});
     render();
   })();
   </script>
