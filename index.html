@@ -418,19 +418,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
     function rankProducts(customer,products,count){return products.map((product,index)=>({...product,match:matchScore(customer,product.vector),_index:index})).sort((a,b)=>Math.abs(b.match-a.match)>1e-12?b.match-a.match:a.model.localeCompare(b.model,'ja')||a.jan.localeCompare(b.jan,'en')||a._index-b._index).slice(0,count)}
     let customerCatalogPromise=null;
     function customerAppBasePath(){const path=window.location.pathname||'/';if(path.endsWith('/'))return path;const last=path.slice(path.lastIndexOf('/')+1);return /\.[a-z0-9]+$/i.test(last)?path.slice(0,path.lastIndexOf('/')+1):`${path}/`}
+    function customerGithubPagesRepo(){const host=String(window.location.hostname||'').toLowerCase(),suffix='.github.io';if(!host.endsWith(suffix))return null;const owner=host.slice(0,-suffix.length),segments=(window.location.pathname||'/').split('/').filter(Boolean);let repo;try{repo=segments.length?decodeURIComponent(segments[0]):`${owner}.github.io`}catch{return null}return owner&&repo?{owner,repo}:null}
+    async function latestCustomerCatalogFilename(base){const repo=customerGithubPagesRepo();let apiFailure='';if(repo){try{const apiUrl=`https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/contents/pc_data?per_page=1000`;const apiResponse=await fetch(apiUrl,{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});if(apiResponse.ok){const entries=await apiResponse.json(),files=(Array.isArray(entries)?entries:[]).filter(item=>item&&item.type==='file'&&/^pc_data_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.csv$/.test(item.name)).map(item=>item.name).sort();if(files.length)return files[files.length-1];apiFailure=`${repo.owner}/${repo.repo}/pc_data に日時形式のCSVが見つかりません。`}else apiFailure=`GitHub APIはHTTP ${apiResponse.status} を返しました。`}catch(error){apiFailure=error?.message||'GitHub APIへの接続に失敗しました。'}}let manifestFailure='';try{const response=await fetch(`${base}latest.json`,{cache:'no-store'});if(response.ok){const manifest=await response.json();if(/^pc_data_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.csv$/.test(manifest.filename||''))return manifest.filename;manifestFailure='latest.json内のCSV名が指定形式ではありません。'}else manifestFailure=`latest.jsonはHTTP ${response.status}を返しました。`}catch(error){manifestFailure=`latest.jsonを取得できません（${error?.message||'通信エラー'}）。`}if(repo)throw new Error(`${apiFailure||'GitHub APIから最新CSVを特定できません。'} ${manifestFailure} リポジトリのpc_data/にCSVがあり、GitHub Pagesから取得できることを確認してください。`);throw new Error(`共有PCカタログを特定できません。${manifestFailure} index.htmlと同階層のpc_data/を確認してください。`)}
     async function loadLatestCustomerCatalog(){
       if(!customerCatalogPromise){
         const base=`${customerAppBasePath()}pc_data/`;
         customerCatalogPromise=(async()=>{
           if(window.location.protocol==='file:')throw new Error('CSV共有の読込にはHTTPまたはHTTPSでの表示が必要です。Webサーバーからページを開いてください。');
-          const manifestUrl=`${base}latest.json`;
-          const manifestResponse=await fetch(manifestUrl,{cache:'no-store'});
-          if(!manifestResponse.ok)throw new Error(`共有PCカタログを取得できません（${manifestUrl} · HTTP ${manifestResponse.status}）。index.htmlと同じ公開フォルダのpc_data/を確認してください。`);
-          const manifest=await manifestResponse.json();
-          if(!/^pc_data_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.csv$/.test(manifest.filename||''))throw new Error('最新CSV名が指定形式ではありません。');
-          const csvUrl=`${base}${encodeURIComponent(manifest.filename)}`;
+          const filename=await latestCustomerCatalogFilename(base);
+          const csvUrl=`${base}${encodeURIComponent(filename)}`;
           const response=await fetch(csvUrl,{cache:'no-store'});
-          if(!response.ok)throw new Error(`最新PCカタログCSVを取得できません（${csvUrl} · HTTP ${response.status}）。`);
+          if(!response.ok)throw new Error(`最新PCカタログCSV ${filename} を取得できません（HTTP ${response.status}）。`);
           return parseCatalogProducts(await response.text());
         })().catch(error=>{customerCatalogPromise=null;throw error});
       }
