@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f4f6fb">
-  <meta name="description" content="15問のかんたんな質問から、あなたに合うPCの必要スペックをまとめます。">
+  <meta name="description" content="PC選びの質問に答え、希望に合う機種と必要スペックをFirebaseカタログから表示します。">
   <title>PCコンシェルジュ｜PC選びの相談シート</title>
   <style>
     :root{color-scheme:light;--ink:#20263a;--ink-2:#46506a;--muted:#727d93;--paper:#f4f6fb;--white:#fff;--line:#e4e8f1;--blue:#4e55e8;--blue-dark:#3940c9;--violet:#8c60ee;--mint:#58d4c2;--coral:#ff8b78;--yellow:#ffd66f;--shadow:0 22px 60px rgba(40,48,93,.10);--round:28px;--round-sm:18px;--font:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Display","Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif}
@@ -250,7 +250,78 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
    limitations under the License.</pre>
     </details>
   </div>
-  <footer class="site-footer"><p>回答はこの画面内で処理され、外部へ送信されません。</p></footer>
+  <footer class="site-footer"><p>質問への回答はこの画面内で処理します。商品カタログのみFirebase Firestoreから読み込みます。</p></footer>
+
+  <script>
+    window.PcFirebaseReady = new Promise((resolve,reject)=>{window.__resolvePcFirebase=resolve;window.__rejectPcFirebase=reject});
+  </script>
+  <script type="module">
+    try {
+      const [appSdk, firestoreSdk] = await Promise.all([
+        import('https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js'),
+        import('https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js')
+      ]);
+      const firebaseConfig = {
+        apiKey: "AIzaSyB09u8CPE0TzG6D7lul1hCOc2a_TRrM5BY",
+        authDomain: "optimal-pc-proposer.firebaseapp.com",
+        projectId: "optimal-pc-proposer",
+        storageBucket: "optimal-pc-proposer.firebasestorage.app",
+        messagingSenderId: "1029515485045",
+        appId: "1:1029515485045:web:38cd3f6a86b2d584a27d3c",
+        measurementId: "G-FD5LD1WDTF"
+      };
+      const app = appSdk.initializeApp(firebaseConfig,'pc-concierge-catalog');
+      const database = firestoreSdk.getFirestore(app);
+    const catalogCollectionName = 'pc_catalog';
+    const fieldKeys = ['cpuSingle','cpuMulti','npuCores','gpu','ramGB','ssdGB','weightG','design','displayInch','aspectRatio','manufacturerMask','failureFrequency','readability','positioning'];
+    const withFirestoreTimeout = promise => new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{const error=new Error('Firestoreからサーバー応答がありません。Cloud Firestore APIと(default)データベースの有効状態を確認してください。');error.code='read-timeout';reject(error)},12000);
+      Promise.resolve(promise).then(value=>{clearTimeout(timer);resolve(value)},error=>{clearTimeout(timer);reject(error)});
+    });
+    const databaseMessage = error => {
+      const message = String(error?.message || '');
+      const code = String(error?.code || '');
+      if (/Cloud Firestore API has not been used|firestore\.googleapis\.com.*disabled|SERVICE_DISABLED|API.*disabled/i.test(message)) return new Error('Cloud Firestore APIが無効です。Google Cloud ConsoleでFirestore APIを有効にし、Firebase ConsoleでCloud Firestoreのデータベースを作成してください。');
+      if (code === 'not-found') return new Error('Firestoreの(default)データベースが見つかりません。Firebase ConsoleでCloud Firestoreデータベースを作成してください。');
+      if (code === 'read-timeout') return new Error('Firestoreサーバーが応答しません。Cloud Firestore APIが有効か、(default)データベースが作成済みか確認してください。');
+      if (code === 'permission-denied') return new Error('Firestore Security Rulesで拒否されました。カタログ読取ルールとスタッフ認証・許可設定を確認してください。');
+      if (code === 'unavailable' || code === 'deadline-exceeded') return new Error('Firestoreに接続できません。APIの有効化、データベースの作成、ネットワークを確認してください。');
+      if (code === 'failed-precondition') return new Error('Firestoreがまだ準備されていないか、クエリ条件が不足しています。データベースとインデックス設定を確認してください。');
+      if (code === 'auth/operation-not-allowed') return new Error('Firebase Authenticationのメール/パスワード方式が無効です。Firebase Consoleで有効にしてください。');
+      if (code === 'auth/invalid-credential' || code === 'auth/user-not-found' || code === 'auth/wrong-password') return new Error('スタッフ用メールアドレスまたはパスワードを確認してください。');
+      if (code === 'auth/network-request-failed') return new Error('Firebase Authenticationに接続できません。ネットワークを確認してください。');
+      if (code === 'auth/too-many-requests') return new Error('ログイン試行が多すぎます。しばらく待ってから再度お試しください。');
+      return new Error(message || 'Firebaseとの通信に失敗しました。');
+    };
+    const productData = product => ({
+      model: String(product.model ?? '').trim(),
+      jan: String(product.jan ?? '').trim(),
+      ...Object.fromEntries(fieldKeys.map((key,index)=>[key,Number(product.vector[index])])),
+      highlights: String(product.highlights ?? '')
+    });
+    const productFromDocument = snapshot => {
+      const data = snapshot.data();
+      if (!data || typeof data.model !== 'string' || !data.model.trim()) throw new Error(`Firestoreの ${snapshot.id} に型番がありません。`);
+      if (typeof data.jan !== 'string' || data.jan !== snapshot.id) throw new Error(`Firestoreの ${snapshot.id} はJANを文字列で保存し、ドキュメントIDと一致させてください。`);
+      const vector = fieldKeys.map(key => Number(data[key]));
+      if (vector.some(value => !Number.isFinite(value))) throw new Error(`Firestoreの ${snapshot.id} は14項目のベクトルが不足または不正です。`);
+      if (Object.keys(data).some(key => !['model','jan',...fieldKeys,'highlights'].includes(key))) throw new Error(`Firestoreの ${snapshot.id} にCSV仕様外の項目があります。`);
+      return {model:data.model,jan:data.jan,vector,highlights:String(data.highlights ?? ''),docId:snapshot.id};
+    };
+    const readCatalog = async () => {
+      try {
+        const snapshot = await withFirestoreTimeout(firestoreSdk.getDocsFromServer(firestoreSdk.collection(database,catalogCollectionName)));
+        return snapshot.docs.map(productFromDocument).sort((a,b)=>a.model.localeCompare(b.model,'ja')||a.jan.localeCompare(b.jan,'en'));
+      } catch (error) { throw databaseMessage(error); }
+    };
+
+      window.__resolvePcFirebase(Object.freeze({list:readCatalog}));
+    } catch (error) {
+      const message = String(error?.message || 'Firebase SDKを読み込めません。ネットワークとCDN接続を確認してください。');
+      window.__rejectPcFirebase(new Error(message));
+    }
+  </script>
+
   <script>
     /* Bundled QR libraries: qrcode-generator 1.4.4 (MIT, Kazuhiko Arase); jsQR 1.4.0 (Apache-2.0, jsQR contributors). */
     "use strict";(()=>{var i0=Object.create;var A0=Object.defineProperty;var u0=Object.getOwnPropertyDescriptor;var f0=Object.getOwnPropertyNames;var k0=Object.getPrototypeOf,v0=Object.prototype.hasOwnProperty;var F0=(j,y)=>()=>(y||j((y={exports:{}}).exports,y),y.exports);var w0=(j,y,N,I)=>{if(y&&typeof y=="object"||typeof y=="function")for(let M of f0(y))!v0.call(j,M)&&M!==N&&A0(j,M,{get:()=>y[M],enumerable:!(I=u0(y,M))||I.enumerable});return j};var t0=(j,y,N)=>(N=j!=null?i0(k0(j)):{},w0(y||!j||!j.__esModule?A0(N,"default",{value:j,enumerable:!0}):N,j));var s0=F0((a0,n0)=>{var D0=(function(){var j=function(E,r){var e=236,B=17,C=E,A=N[r],o=null,x=0,D=null,F=[],a={},h=function(s,c){x=C*4+17,o=(function(n){for(var u=new Array(n),f=0;f<n;f+=1){u[f]=new Array(n);for(var _=0;_<n;_+=1)u[f][_]=null}return u})(x),T(0,0),T(x-7,0),T(0,x-7),Q(),U(),O(s,c),C>=7&&H(s),D==null&&(D=K(C,A,F)),J(D,c)},T=function(s,c){for(var n=-1;n<=7;n+=1)if(!(s+n<=-1||x<=s+n))for(var u=-1;u<=7;u+=1)c+u<=-1||x<=c+u||(0<=n&&n<=6&&(u==0||u==6)||0<=u&&u<=6&&(n==0||n==6)||2<=n&&n<=4&&2<=u&&u<=4?o[s+n][c+u]=!0:o[s+n][c+u]=!1)},p=function(){for(var s=0,c=0,n=0;n<8;n+=1){h(!0,n);var u=M.getLostPoint(a);(n==0||s>u)&&(s=u,c=n)}return c},U=function(){for(var s=8;s<x-8;s+=1)o[s][6]==null&&(o[s][6]=s%2==0);for(var c=8;c<x-8;c+=1)o[6][c]==null&&(o[6][c]=c%2==0)},Q=function(){for(var s=M.getPatternPosition(C),c=0;c<s.length;c+=1)for(var n=0;n<s.length;n+=1){var u=s[c],f=s[n];if(o[u][f]==null)for(var _=-2;_<=2;_+=1)for(var X=-2;X<=2;X+=1)_==-2||_==2||X==-2||X==2||_==0&&X==0?o[u+_][f+X]=!0:o[u+_][f+X]=!1}},H=function(s){for(var c=M.getBCHTypeNumber(C),n=0;n<18;n+=1){var u=!s&&(c>>n&1)==1;o[Math.floor(n/3)][n%3+x-8-3]=u}for(var n=0;n<18;n+=1){var u=!s&&(c>>n&1)==1;o[n%3+x-8-3][Math.floor(n/3)]=u}},O=function(s,c){for(var n=A<<3|c,u=M.getBCHTypeInfo(n),f=0;f<15;f+=1){var _=!s&&(u>>f&1)==1;f<6?o[f][8]=_:f<8?o[f+1][8]=_:o[x-15+f][8]=_}for(var f=0;f<15;f+=1){var _=!s&&(u>>f&1)==1;f<8?o[8][x-f-1]=_:f<9?o[8][15-f-1+1]=_:o[8][15-f-1]=_}o[x-8][8]=!s},J=function(s,c){for(var n=-1,u=x-1,f=7,_=0,X=M.getMaskFunction(c),R=x-1;R>0;R-=2)for(R==6&&(R-=1);;){for(var Y=0;Y<2;Y+=1)if(o[u][R-Y]==null){var V=!1;_<s.length&&(V=(s[_]>>>f&1)==1);var G=X(u,R-Y);G&&(V=!V),o[u][R-Y]=V,f-=1,f==-1&&(_+=1,f=7)}if(u+=n,u<0||x<=u){u-=n,n=-n;break}}},z=function(s,c){for(var n=0,u=0,f=0,_=new Array(c.length),X=new Array(c.length),R=0;R<c.length;R+=1){var Y=c[R].dataCount,V=c[R].totalCount-Y;u=Math.max(u,Y),f=Math.max(f,V),_[R]=new Array(Y);for(var G=0;G<_[R].length;G+=1)_[R][G]=255&s.getBuffer()[G+n];n+=Y;var W=M.getErrorCorrectPolynomial(V),Z=P(_[R],W.getLength()-1),C0=Z.mod(W);X[R]=new Array(W.getLength()-1);for(var G=0;G<X[R].length;G+=1){var q=G+C0.getLength()-X[R].length;X[R][G]=q>=0?C0.getAt(q):0}}for(var o0=0,G=0;G<c.length;G+=1)o0+=c[G].totalCount;for(var e0=new Array(o0),B0=0,G=0;G<u;G+=1)for(var R=0;R<c.length;R+=1)G<_[R].length&&(e0[B0]=_[R][G],B0+=1);for(var G=0;G<f;G+=1)for(var R=0;R<c.length;R+=1)G<X[R].length&&(e0[B0]=X[R][G],B0+=1);return e0},K=function(s,c,n){for(var u=g.getRSBlocks(s,c),f=i(),_=0;_<n.length;_+=1){var X=n[_];f.put(X.getMode(),4),f.put(X.getLength(),M.getLengthInBits(X.getMode(),s)),X.write(f)}for(var R=0,_=0;_<u.length;_+=1)R+=u[_].dataCount;if(f.getLengthInBits()>R*8)throw"code length overflow. ("+f.getLengthInBits()+">"+R*8+")";for(f.getLengthInBits()+4<=R*8&&f.put(0,4);f.getLengthInBits()%8!=0;)f.putBit(!1);for(;!(f.getLengthInBits()>=R*8||(f.put(e,8),f.getLengthInBits()>=R*8));)f.put(B,8);return z(f,u)};a.addData=function(s,c){c=c||"Byte";var n=null;switch(c){case"Numeric":n=t(s);break;case"Alphanumeric":n=v(s);break;case"Byte":n=m(s);break;case"Kanji":n=d(s);break;default:throw"mode:"+c}F.push(n),D=null},a.isDark=function(s,c){if(s<0||x<=s||c<0||x<=c)throw s+","+c;return o[s][c]},a.getModuleCount=function(){return x},a.make=function(){if(C<1){for(var s=1;s<40;s++){for(var c=g.getRSBlocks(s,A),n=i(),u=0;u<F.length;u++){var f=F[u];n.put(f.getMode(),4),n.put(f.getLength(),M.getLengthInBits(f.getMode(),s)),f.write(n)}for(var _=0,u=0;u<c.length;u++)_+=c[u].dataCount;if(n.getLengthInBits()<=_*8)break}C=s}h(!1,p())},a.createTableTag=function(s,c){s=s||2,c=typeof c=="undefined"?s*4:c;var n="";n+='<table style="',n+=" border-width: 0px; border-style: none;",n+=" border-collapse: collapse;",n+=" padding: 0px; margin: "+c+"px;",n+='">',n+="<tbody>";for(var u=0;u<a.getModuleCount();u+=1){n+="<tr>";for(var f=0;f<a.getModuleCount();f+=1)n+='<td style="',n+=" border-width: 0px; border-style: none;",n+=" border-collapse: collapse;",n+=" padding: 0px; margin: 0px;",n+=" width: "+s+"px;",n+=" height: "+s+"px;",n+=" background-color: ",n+=a.isDark(u,f)?"#000000":"#ffffff",n+=";",n+='"/>';n+="</tr>"}return n+="</tbody>",n+="</table>",n},a.createSvgTag=function(s,c,n,u){var f={};typeof arguments[0]=="object"&&(f=arguments[0],s=f.cellSize,c=f.margin,n=f.alt,u=f.title),s=s||2,c=typeof c=="undefined"?s*4:c,n=typeof n=="string"?{text:n}:n||{},n.text=n.text||null,n.id=n.text?n.id||"qrcode-description":null,u=typeof u=="string"?{text:u}:u||{},u.text=u.text||null,u.id=u.text?u.id||"qrcode-title":null;var _=a.getModuleCount()*s+c*2,X,R,Y,V,G="",W;for(W="l"+s+",0 0,"+s+" -"+s+",0 0,-"+s+"z ",G+='<svg version="1.1" xmlns="http://www.w3.org/2000/svg"',G+=f.scalable?"":' width="'+_+'px" height="'+_+'px"',G+=' viewBox="0 0 '+_+" "+_+'" ',G+=' preserveAspectRatio="xMinYMin meet"',G+=u.text||n.text?' role="img" aria-labelledby="'+x0([u.id,n.id].join(" ").trim())+'"':"",G+=">",G+=u.text?'<title id="'+x0(u.id)+'">'+x0(u.text)+"</title>":"",G+=n.text?'<description id="'+x0(n.id)+'">'+x0(n.text)+"</description>":"",G+='<rect width="100%" height="100%" fill="white" cx="0" cy="0"/>',G+='<path d="',Y=0;Y<a.getModuleCount();Y+=1)for(V=Y*s+c,X=0;X<a.getModuleCount();X+=1)a.isDark(Y,X)&&(R=X*s+c,G+="M"+R+","+V+W);return G+='" stroke="transparent" fill="black"/>',G+="</svg>",G},a.createDataURL=function(s,c){s=s||2,c=typeof c=="undefined"?s*4:c;var n=a.getModuleCount()*s+c*2,u=c,f=n-c;return l(n,n,function(_,X){if(u<=_&&_<f&&u<=X&&X<f){var R=Math.floor((_-u)/s),Y=Math.floor((X-u)/s);return a.isDark(Y,R)?0:1}else return 1})},a.createImgTag=function(s,c,n){s=s||2,c=typeof c=="undefined"?s*4:c;var u=a.getModuleCount()*s+c*2,f="";return f+="<img",f+=' src="',f+=a.createDataURL(s,c),f+='"',f+=' width="',f+=u,f+='"',f+=' height="',f+=u,f+='"',n&&(f+=' alt="',f+=x0(n),f+='"'),f+="/>",f};var x0=function(s){for(var c="",n=0;n<s.length;n+=1){var u=s.charAt(n);switch(u){case"<":c+="&lt;";break;case">":c+="&gt;";break;case"&":c+="&amp;";break;case'"':c+="&quot;";break;default:c+=u;break}}return c},$=function(s){var c=1;s=typeof s=="undefined"?c*2:s;var n=a.getModuleCount()*c+s*2,u=s,f=n-s,_,X,R,Y,V,G={"\u2588\u2588":"\u2588","\u2588 ":"\u2580"," \u2588":"\u2584","  ":" "},W={"\u2588\u2588":"\u2580","\u2588 ":"\u2580"," \u2588":" ","  ":" "},Z="";for(_=0;_<n;_+=2){for(R=Math.floor((_-u)/c),Y=Math.floor((_+1-u)/c),X=0;X<n;X+=1)V="\u2588",u<=X&&X<f&&u<=_&&_<f&&a.isDark(R,Math.floor((X-u)/c))&&(V=" "),u<=X&&X<f&&u<=_+1&&_+1<f&&a.isDark(Y,Math.floor((X-u)/c))?V+=" ":V+="\u2588",Z+=s<1&&_+1>=f?W[V]:G[V];Z+=`
@@ -296,7 +367,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
     const clamp=(n,min,max)=>Math.min(max,Math.max(min,n));
     const selectedLabel=(key)=>{const q=questions.find(x=>x.key===key);const v=state.answers[key];if(!q||!v||Array.isArray(v)&&!v.length)return '指定なし';if(Array.isArray(v))return v.map(value=>q.options.find(o=>o.value===value)?.label||'').filter(Boolean).join('、');return q.options.find(o=>o.value===v)?.label||String(v)};
     function resetAnswers(){state.answers={purpose:[],tasks:[],makers:[]};questions.forEach(q=>{if(q.multi&&!Array.isArray(state.answers[q.key]))state.answers[q.key]=[]});state.vector=null;state.csv='';state.error=''}
-    function renderHome(){return `<section class="home-wrap"><div class="hero"><div class="hero-copy"><span class="eyebrow"><i class="eyebrow-dot"></i>あなたに合う一台を、一緒に見つける</span><h1>使い方から見つける、<br><span class="accent">あなたのPC。</span></h1><p class="hero-desc">15のかんたんな質問に答えるだけ。必要な性能やサイズを整理して、スタッフにそのまま見せられる相談シートをつくります。</p><div class="hero-actions"><button class="primary-btn" data-action="start">質問をはじめる <span class="arrow" aria-hidden="true">→</span></button></div><p class="hero-note">回答はこの画面内で処理され、外部へ送信されません。</p></div><div class="hero-visual" aria-hidden="true"><div class="visual-glow"></div><div class="laptop-art"><div class="screen-shell"><div class="screen"><div class="screen-card"><div class="screen-kicker">YOUR PC PROFILE</div><div class="screen-title">ぴったりの一台を<br>一緒に見つけよう。</div><div class="screen-bars"><i></i><i></i><i></i><i></i></div></div></div></div><div class="keyboard"></div></div><div class="floating-tag one"><span class="tag-icon">✦</span>15問で見つかる</div><div class="floating-tag two"><span class="tag-icon">✓</span>スタッフに共有</div></div></div><div class="home-strip"><div class="strip-item"><span class="strip-icon">◷</span><span><strong>約3分で回答</strong><small>迷わず進める15の質問</small></span></div><div class="strip-item"><span class="strip-icon">▦</span><span><strong>あなただけの相談シート</strong><small>必要なスペックを見える化</small></span></div><div class="strip-item"><span class="strip-icon">⌁</span><span><strong>QRでスタッフに共有</strong><small>リンクなし・数値で要望を共有</small></span></div></div><section class="steps-band"><div class="section-heading"><div><span class="eyebrow">HOW IT WORKS</span><h2>答えたら、相談の準備は完了。</h2></div><p>わからない質問は、スタッフに相談しながらでも大丈夫です。</p></div><div class="steps-grid"><article class="step-card"><span class="step-no">STEP 01</span><h3>使い方を選ぶ</h3><p>ふだんの作業や持ち運び方などを、選択肢から選びます。</p></article><article class="step-card"><span class="step-no">STEP 02</span><h3>必要な性能を整理</h3><p>回答をCPU・メモリ・容量・画面サイズなどの目安にまとめます。</p></article><article class="step-card"><span class="step-no">STEP 03</span><h3>スタッフに見せる</h3><p>QRをスタッフに見せて、ぴったりの一台を相談します。</p></article></div></section></section>`}
+    function renderHome(){return `<section class="home-wrap"><div class="hero"><div class="hero-copy"><span class="eyebrow"><i class="eyebrow-dot"></i>あなたに合う一台を、一緒に見つける</span><h1>使い方から見つける、<br><span class="accent">あなたのPC。</span></h1><p class="hero-desc">15のかんたんな質問に答えるだけ。必要な性能やサイズを整理して、スタッフにそのまま見せられる相談シートをつくります。</p><div class="hero-actions"><button class="primary-btn" data-action="start">質問をはじめる <span class="arrow" aria-hidden="true">→</span></button></div><p class="hero-note">質問への回答はこの画面内で処理します。商品カタログのみFirebase Firestoreから読み込みます。</p></div><div class="hero-visual" aria-hidden="true"><div class="visual-glow"></div><div class="laptop-art"><div class="screen-shell"><div class="screen"><div class="screen-card"><div class="screen-kicker">YOUR PC PROFILE</div><div class="screen-title">ぴったりの一台を<br>一緒に見つけよう。</div><div class="screen-bars"><i></i><i></i><i></i><i></i></div></div></div></div><div class="keyboard"></div></div><div class="floating-tag one"><span class="tag-icon">✦</span>15問で見つかる</div><div class="floating-tag two"><span class="tag-icon">✓</span>スタッフに共有</div></div></div><div class="home-strip"><div class="strip-item"><span class="strip-icon">◷</span><span><strong>約3分で回答</strong><small>迷わず進める15の質問</small></span></div><div class="strip-item"><span class="strip-icon">▦</span><span><strong>あなただけの相談シート</strong><small>必要なスペックを見える化</small></span></div><div class="strip-item"><span class="strip-icon">⌁</span><span><strong>QRでスタッフに共有</strong><small>リンクなし・数値で要望を共有</small></span></div></div><section class="steps-band"><div class="section-heading"><div><span class="eyebrow">HOW IT WORKS</span><h2>答えたら、相談の準備は完了。</h2></div><p>わからない質問は、スタッフに相談しながらでも大丈夫です。</p></div><div class="steps-grid"><article class="step-card"><span class="step-no">STEP 01</span><h3>使い方を選ぶ</h3><p>ふだんの作業や持ち運び方などを、選択肢から選びます。</p></article><article class="step-card"><span class="step-no">STEP 02</span><h3>必要な性能を整理</h3><p>回答をCPU・メモリ・容量・画面サイズなどの目安にまとめます。</p></article><article class="step-card"><span class="step-no">STEP 03</span><h3>スタッフに見せる</h3><p>QRをスタッフに見せて、ぴったりの一台を相談します。</p></article></div></section></section>`}
     function renderQuiz(){
       const q=questions[state.index],questionId=state.index+1,pct=(questionId/questions.length)*100,answer=state.answers[q.key];
       const isChosen=v=>Array.isArray(answer)?answer.includes(v):answer===v;
@@ -365,8 +436,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
       });
     }
     function toCsv(vector){return [QR_SCHEMA_VERSION,...vector.map((v,i)=>i===9?Number(v).toFixed(6):String(v)),...encodeQuestionAnswers()].join(',')}
-    const PC_CSV_HEADER=['model','jan',...vectorKeys,'highlights'];
-    const PC_CSV_HEADER_LEGACY=PC_CSV_HEADER.slice(0,-1);
     const EAN_L=['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
     const EAN_G=['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
     const EAN_R=['1110010','1100110','1101100','1000010','1011100','1001110','1010000','1000100','1001000','1110100'];
@@ -386,61 +455,49 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
       const bars=[...bits].map((bit,i)=>bit==='1'?`<rect x="${i+quiet}" y="${guard(i)?2:5}" width="1" height="${guard(i)?57:51}"/>`:'').join('');
       return `<svg class="jan-barcode" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} 62" role="img" aria-label="JANバーコード">${bars}</svg>`;
     }
-    function parseCatalogCsv(text){
-      const source=String(text??'').replace(/^\uFEFF/,'');let rows=[],row=[],cell='',quoted=false,afterQuote=false;
-      const pushCell=()=>{row.push(cell);cell='';afterQuote=false};const pushRow=()=>{pushCell();if(row.some(v=>v!==''))rows.push(row);row=[]};
-      for(let i=0;i<source.length;i++){const ch=source[i];if(quoted){if(ch==='"'&&source[i+1]==='"'){cell+='"';i++}else if(ch==='"'){quoted=false;afterQuote=true}else cell+=ch}else if(afterQuote){if(ch===',')pushCell();else if(ch==='\n')pushRow();else if(ch==='\r'){if(source[i+1]==='\n')i++;pushRow()}else throw new Error('PC CSVの閉じ引用符の後はカンマまたは改行が必要です。')}else if(ch==='"'){if(cell.length)throw new Error('PC CSVの引用符位置が不正です。');quoted=true}else if(ch===',')pushCell();else if(ch==='\n')pushRow();else if(ch==='\r'){if(source[i+1]==='\n')i++;pushRow()}else cell+=ch}
-      if(quoted)throw new Error('PC CSVの引用符が閉じていません。');if(cell!==''||row.length||afterQuote){row.push(cell);if(row.some(v=>v!==''))rows.push(row)}
-      return rows;
-    }
-    function validateCatalogVector(raw,line){
-      if(raw.length!==14||raw.some(x=>String(x).trim()===''))throw new Error(`${line}行目：14項目のベクトルが必要です。`);
-      const v=raw.map(Number);if(v.some(n=>!Number.isFinite(n)||n<0))throw new Error(`${line}行目：ベクトル数値を確認してください。`);
-      for(const i of [2,7,10,11,12,13])if(!Number.isInteger(v[i]))throw new Error(`${line}行目：整数項目を確認してください。`);
-      if(v[2]>255||v[4]<=0||v[4]>1024||v[5]<=0||v[5]>1000000||v[6]<=0||v[6]>100000)throw new Error(`${line}行目：NPU・RAM・SSD・重量を確認してください。`);
-      if(v[7]<1||v[7]>10||v[12]<1||v[12]>10||v[13]<1||v[13]>10)throw new Error(`${line}行目：主観評価は1〜10です。`);
-      if(![13.3,14,15.6,16].some(x=>Math.abs(v[8]-x)<.005)||![1.777778,1.6].some(x=>Math.abs(v[9]-x)<.00001))throw new Error(`${line}行目：画面サイズまたは比率が不正です。`);
-      if(([13.3,15.6].some(x=>Math.abs(v[8]-x)<.005))!==(Math.abs(v[9]-1.777778)<.00001))throw new Error(`${line}行目：画面サイズと比率が一致しません。`);
-      if(v[10]>32767||(v[10]!==0&&(v[10]&(v[10]-1))!==0))throw new Error(`${line}行目：メーカーは0または1社のbitで指定してください。`);
-      if(![0,1].includes(v[11]))throw new Error(`${line}行目：故障頻度は0または1です。`);
-      return v;
-    }
-    function headerMatches(actual,expected){return actual.length===expected.length&&actual.every((value,index)=>String(value??'').replace(/^\uFEFF/,'').trim()===expected[index])}
-    function parseCatalogProducts(text){
-      const rows=parseCatalogCsv(text);if(!rows.length)throw new Error('PC CSVが空です。');
-      const rich=headerMatches(rows[0],PC_CSV_HEADER);
-      const legacy=headerMatches(rows[0],PC_CSV_HEADER_LEGACY);
-      if(!rich&&!legacy)throw new Error('最新PC CSVのヘッダーが一致しません。16列の基本形式、または末尾にhighlightsを付けた17列形式を確認してください。');
-      return rows.slice(1).map((row,index)=>{const line=index+2;if(row.length!==(rich?17:16))throw new Error(`${line}行目は${rich?17:16}列が必要です。`);const model=String(row[0]).trim(),jan=String(row[1]).trim();if(!model)throw new Error(`${line}行目：型番が空です。`);if(!validJan(jan))throw new Error(`${line}行目：JANコードの桁数またはチェックデジットが不正です。`);const vector=validateCatalogVector(row.slice(2,16),line),highlights=rich?String(row[16]??'').trim():'';if(highlights.length>500)throw new Error(`${line}行目：highlightsは500文字以内です。`);return {model,jan,vector,highlights}});
-    }
     function normalizeMatchValue(index,value){const range=bounds[index];return clamp((Number(value)-range[0])/(range[1]-range[0]),0,1)}
     function matchScore(customer,product){let total=0,weightTotal=0;for(let i=0;i<14;i++){let similarity;if(i===2){const required=normalizeMatchValue(2,customer[i]),available=normalizeMatchValue(2,product[i]);similarity=required===0?1:1-Math.max(0,required-available)}else if(i===9)similarity=Math.abs(Number(customer[i])-Number(product[i]))<.00001?1:0;else if(i===10)similarity=Number(customer[i])===0||((Number(customer[i])&Number(product[i]))!==0)?1:0;else if(i===11)similarity=Number(customer[i])===Number(product[i])?1:0;else similarity=1-Math.abs(normalizeMatchValue(i,customer[i])-normalizeMatchValue(i,product[i]));total+=weights[i]*similarity;weightTotal+=weights[i]}return total/weightTotal*100}
     function rankProducts(customer,products,count){return products.map((product,index)=>({...product,match:matchScore(customer,product.vector),_index:index})).sort((a,b)=>Math.abs(b.match-a.match)>1e-12?b.match-a.match:a.model.localeCompare(b.model,'ja')||a.jan.localeCompare(b.jan,'en')||a._index-b._index).slice(0,count)}
+    function validateCatalogVector(raw,line){
+      if(!Array.isArray(raw)||raw.length!==14||raw.some(value=>String(value).trim()===''))throw new Error(`Firestoreの${line}件目に14項目のベクトルが必要です。`);
+      const v=raw.map(Number);
+      if(v.some(value=>!Number.isFinite(value)||value<0))throw new Error(`Firestoreの${line}件目に不正なベクトル値があります。`);
+      for(const i of [2,7,10,11,12,13])if(!Number.isInteger(v[i]))throw new Error(`Firestoreの${line}件目の整数項目を確認してください。`);
+      if(v[2]>80||v[4]<=0||v[4]>1024||v[5]<=0||v[5]>1000000||v[6]<=0||v[6]>100000)throw new Error(`Firestoreの${line}件目のNPU・RAM・SSD・重量を確認してください。`);
+      if(v[7]<1||v[7]>10||v[12]<1||v[12]>10||v[13]<1||v[13]>10)throw new Error(`Firestoreの${line}件目の主観評価は1〜10です。`);
+      if(![13.3,14,15.6,16].some(size=>Math.abs(v[8]-size)<.005)||![1.777778,1.6].some(ratio=>Math.abs(v[9]-ratio)<.00001))throw new Error(`Firestoreの${line}件目の画面サイズまたは比率が不正です。`);
+      if(([13.3,15.6].some(size=>Math.abs(v[8]-size)<.005))!==(Math.abs(v[9]-1.777778)<.00001))throw new Error(`Firestoreの${line}件目の画面サイズと比率が一致しません。`);
+      if(v[10]>32767||(v[10]!==0&&(v[10]&(v[10]-1))!==0))throw new Error(`Firestoreの${line}件目のメーカーは0または1社のbitで指定してください。`);
+      if(![0,1].includes(v[11]))throw new Error(`Firestoreの${line}件目の故障頻度は0または1です。`);
+      return v;
+    }
     let customerCatalogPromise=null;
-    function customerAppBasePath(){const path=window.location.pathname||'/';if(path.endsWith('/'))return path;const last=path.slice(path.lastIndexOf('/')+1);return /\.[a-z0-9]+$/i.test(last)?path.slice(0,path.lastIndexOf('/')+1):`${path}/`}
-    function customerGithubPagesRepo(){const host=String(window.location.hostname||'').toLowerCase(),suffix='.github.io';if(!host.endsWith(suffix))return null;const owner=host.slice(0,-suffix.length),segments=(window.location.pathname||'/').split('/').filter(Boolean);let repo;try{repo=segments.length?decodeURIComponent(segments[0]):`${owner}.github.io`}catch{return null}return owner&&repo?{owner,repo}:null}
-    async function latestCustomerCatalogFilename(base){const repo=customerGithubPagesRepo();let apiFailure='';if(repo){try{const apiUrl=`https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.repo)}/contents/pc_data?per_page=1000`;const apiResponse=await fetch(apiUrl,{headers:{Accept:'application/vnd.github+json'},cache:'no-store'});if(apiResponse.ok){const entries=await apiResponse.json(),files=(Array.isArray(entries)?entries:[]).filter(item=>item&&item.type==='file'&&/^pc_data_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.csv$/.test(item.name)).map(item=>item.name).sort();if(files.length)return files[files.length-1];apiFailure=`${repo.owner}/${repo.repo}/pc_data に日時形式のCSVが見つかりません。`}else apiFailure=`GitHub APIはHTTP ${apiResponse.status} を返しました。`}catch(error){apiFailure=error?.message||'GitHub APIへの接続に失敗しました。'}}let manifestFailure='';try{const response=await fetch(`${base}latest.json`,{cache:'no-store'});if(response.ok){const manifest=await response.json();if(/^pc_data_\d{4}_\d{2}_\d{2}_\d{2}_\d{2}_\d{2}\.csv$/.test(manifest.filename||''))return manifest.filename;manifestFailure='latest.json内のCSV名が指定形式ではありません。'}else manifestFailure=`latest.jsonはHTTP ${response.status}を返しました。`}catch(error){manifestFailure=`latest.jsonを取得できません（${error?.message||'通信エラー'}）。`}if(repo)throw new Error(`${apiFailure||'GitHub APIから最新CSVを特定できません。'} ${manifestFailure} リポジトリのpc_data/にCSVがあり、GitHub Pagesから取得できることを確認してください。`);throw new Error(`共有PCカタログを特定できません。${manifestFailure} index.htmlと同階層のpc_data/を確認してください。`)}
-    async function loadLatestCustomerCatalog(){
+    async function loadLatestCustomerCatalog(force=false){
+      if(force)customerCatalogPromise=null;
       if(!customerCatalogPromise){
-        const base=`${customerAppBasePath()}pc_data/`;
         customerCatalogPromise=(async()=>{
-          if(window.location.protocol==='file:')throw new Error('CSV共有の読込にはHTTPまたはHTTPSでの表示が必要です。Webサーバーからページを開いてください。');
-          const filename=await latestCustomerCatalogFilename(base);
-          const csvUrl=`${base}${encodeURIComponent(filename)}`;
-          const response=await fetch(csvUrl,{cache:'no-store'});
-          if(!response.ok)throw new Error(`最新PCカタログCSV ${filename} を取得できません（HTTP ${response.status}）。`);
-          return parseCatalogProducts(await response.text());
+          const firebase=await window.PcFirebaseReady;
+          const records=await firebase.list();
+          return records.map((product,index)=>{
+            const line=index+1,model=String(product.model||'').trim(),jan=String(product.jan||'').trim();
+            if(!model)throw new Error(`Firestoreの${line}件目に型番がありません。`);
+            if(!validJan(jan))throw new Error(`FirestoreのJAN ${jan||'(空欄)'} はチェックデジットが正しい8桁または13桁ではありません。`);
+            const vector=validateCatalogVector(product.vector,line);
+            const highlights=String(product.highlights??'').trim();
+            if(highlights.length>500)throw new Error(`FirestoreのJAN ${jan} のhighlightsが500文字を超えています。`);
+            return {model,jan,vector,highlights};
+          });
         })().catch(error=>{customerCatalogPromise=null;throw error});
       }
       return customerCatalogPromise;
     }
     function customerRecommendationCard(product,index){const specs=[[0,'CPU single'],[4,'RAM'],[5,'SSD'],[6,'重量'],[8,'画面'],[10,'メーカー']].map(([i,label])=>`<span><small>${esc(label)}</small><strong>${esc(formatSpec(i,product.vector[i]))}</strong></span>`).join('');return `<article class="customer-rec-card"><div class="customer-rec-top"><span class="customer-rec-rank">${index+1}位</span><strong>一致度 ${product.match.toFixed(1)}%</strong></div><h3>${esc(product.model)}</h3>${product.highlights?`<p class="customer-rec-highlight">${esc(product.highlights)}</p>`:'<p class="customer-rec-highlight muted">商品の魅力紹介はカタログ未登録です。</p>'}<div class="customer-rec-specs">${specs}</div><div class="customer-rec-barcode">${barcodeSvg(product.jan)}</div></article>`}
-    async function populateCustomerRecommendations(){const mount=document.getElementById('customer-recommendations');if(!mount||!state.vector)return;mount.innerHTML='<p class="recommendation-status">最新カタログを確認しています…</p>';try{const products=await loadLatestCustomerCatalog();if(!mount.isConnected)return;const ranked=rankProducts(state.vector,products,3);mount.innerHTML=ranked.length?`<div class="customer-rec-grid">${ranked.map(customerRecommendationCard).join('')}</div>`:'<p class="recommendation-status">共有カタログに商品データがまだありません。実商品CSVを pc_data/ に追加するとおすすめが表示されます。</p>'}catch(error){if(mount.isConnected)mount.innerHTML=`<div class="recommendation-error" role="alert"><p class="recommendation-status error">商品カタログを読み込めませんでした。${esc(error.message)}</p><button type="button" class="secondary-btn" data-action="retry-catalog">もう一度読み込む</button></div>`}}
+    async function populateCustomerRecommendations(){const mount=document.getElementById('customer-recommendations');if(!mount||!state.vector)return;mount.innerHTML='<p class="recommendation-status">FirebaseのPCカタログを読み込んでいます…</p>';try{const products=await loadLatestCustomerCatalog();if(!mount.isConnected)return;const ranked=rankProducts(state.vector,products,3);mount.innerHTML=ranked.length?`<div class="customer-rec-grid">${ranked.map(customerRecommendationCard).join('')}</div>`:'<p class="recommendation-status">FirestoreのPCカタログに商品データがまだありません。スタッフが商品を登録するとおすすめが表示されます。</p>'}catch(error){if(mount.isConnected)mount.innerHTML=`<div class="recommendation-error" role="alert"><p class="recommendation-status error">商品カタログを読み込めませんでした。${esc(error.message)}</p><button type="button" class="secondary-btn" data-action="retry-catalog">もう一度読み込む</button></div>`}}
     function makerNames(mask){if(!mask)return ['メーカー指定なし'];return manufacturerBitNames.filter(x=>(mask&x.bit)!==0).map(x=>x.name)}
     function formatSpec(i,v){switch(i){case 0:return `約${v.toLocaleString('ja-JP')} 点`;case 1:return `約${v.toLocaleString('ja-JP')} 点`;case 2:return v===0?'0コア（NPU指定なし）':`${v}コア目安`;case 3:return v===0?'0点（高負荷GPUは指定なし）':`約${v.toLocaleString('ja-JP')} 点`;case 4:return `${v} GB`;case 5:return `${v.toLocaleString('ja-JP')} GB`;case 6:return `${v.toLocaleString('ja-JP')} g 以内を目安`;case 7:return `${v} / 10`;case 8:return `${v} inch`;case 9:return Math.abs(v-16/9)<.03?'16:9':'16:10';case 10:return makerNames(v).join('、');case 11:return v===0?'少ない（希望）':'多い（価格優先の希望）';case 12:return `${v} / 10`;case 13:return v>=8?'ハイエンド寄り':v<=4?'エントリー寄り':'中位〜上位寄り';default:return String(v)}}
     function renderSpecRows(vector){return vector.map((v,i)=>`<div class="spec-row"><span class="spec-label">${esc(specMeta[i][0])}</span><span class="spec-value">${esc(formatSpec(i,v))}</span></div>`).join('')}
     function answerChips(){const keys=[['用途',selectedLabel('purpose')],['作業',selectedLabel('tasks')],['持ち運び',selectedLabel('carry')],['静かな環境',selectedLabel('quiet')],['電源なし',selectedLabel('unplugged')],['保証',selectedLabel('warranty')]];return keys.map(([k,v])=>`<span class="note-chip"><b>${esc(k)}：</b>${esc(v)}</span>`).join('')}
-    function renderResult(){return `<section class="result-wrap" style="max-width:900px"><div class="result-intro"><span class="eyebrow"><i class="eyebrow-dot"></i>相談シートができました</span><h1>これをスタッフに<br>お見せください。</h1></div><section class="qr-card" style="position:static"><div class="qr-frame" style="width:min(360px,100%);margin:0 auto"><canvas id="customer-qr" aria-label="PC希望条件のQRコード"></canvas></div></section><section class="customer-recommendations"><div class="customer-rec-heading"><div><span class="eyebrow">CATALOG MATCH</span><h2>あなたに合うおすすめPC</h2><p>回答との一致度が高い上位3機種です。</p></div></div><div id="customer-recommendations" aria-live="polite"><p class="recommendation-status">最新カタログを確認しています…</p></div></section><div class="result-controls" style="justify-content:center"><button type="button" class="secondary-btn" data-action="restart">最初からやり直す</button></div></section>`}
+    function renderResult(){return `<section class="result-wrap" style="max-width:900px"><div class="result-intro"><span class="eyebrow"><i class="eyebrow-dot"></i>相談シートができました</span><h1>これをスタッフに<br>お見せください。</h1></div><section class="qr-card" style="position:static"><div class="qr-frame" style="width:min(360px,100%);margin:0 auto"><canvas id="customer-qr" aria-label="PC希望条件のQRコード"></canvas></div></section><section class="customer-recommendations"><div class="customer-rec-heading"><div><span class="eyebrow">CATALOG MATCH</span><h2>あなたに合うおすすめPC</h2><p>回答との一致度が高い上位3機種です。</p></div></div><div id="customer-recommendations" aria-live="polite"><p class="recommendation-status">FirebaseのPCカタログを読み込んでいます…</p></div></section><div class="result-controls" style="justify-content:center"><button type="button" class="secondary-btn" data-action="restart">最初からやり直す</button></div></section>`}
     function drawQr(){const canvas=document.getElementById('customer-qr');if(!canvas||!state.csv)return;if(typeof qrcodeFactory!=='function'){canvas.parentElement.innerHTML='<p class="qr-placeholder">QRライブラリを読み込めませんでした。CSVをコピーしてスタッフ画面へ貼り付けてください。</p>';return}try{const qr=qrcodeFactory(0,'M');qr.addData(state.csv,'Byte');qr.make();const count=qr.getModuleCount(),scale=7,quiet=4,total=(count+quiet*2)*scale;canvas.width=total;canvas.height=total;canvas.setAttribute('aria-label','CSV数値だけを格納したQRコード');const ctx=canvas.getContext('2d');ctx.fillStyle='#ffffff';ctx.fillRect(0,0,total,total);ctx.fillStyle='#171b2d';for(let r=0;r<count;r++)for(let c=0;c<count;c++)if(qr.isDark(r,c))ctx.fillRect((c+quiet)*scale,(r+quiet)*scale,scale,scale)}catch(e){console.error(e);const holder=canvas.parentElement;holder.innerHTML='<p class="qr-placeholder">QRを生成できませんでした。CSVをコピーしてスタッフ画面へ貼り付けてください。</p>'}}
     function render(){if(state.view==='home')app.innerHTML=renderHome();else if(state.view==='quiz')app.innerHTML=renderQuiz();else{app.innerHTML=renderResult();drawQr();populateCustomerRecommendations()}}
     function begin(){resetAnswers();state.index=0;state.view='quiz';render();window.scrollTo({top:0,behavior:'smooth'})}
